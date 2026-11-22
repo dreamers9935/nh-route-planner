@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NH Route Planner</title>
+<meta name="description" content="National-Highway-only routes for FASTag Annual Pass holders, with a shareable Google Maps link.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f6f3;--card:#fff;--ink:#14201a;--mut:#5d6b63;--line:#dfe5e0;--nh:#0f7b45;--nhbg:#e3f3ea;--warn:#b26a00;--warnbg:#fff3dc;--bad:#c0392b;--badbg:#fde7e4;--acc:#0f5fd7}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1411;--card:#161e1a;--ink:#e7efe9;--mut:#93a39a;--line:#26332c;--nhbg:#12301f;--warnbg:#33270f;--badbg:#3a1714;--nh:#3ccf82;--acc:#5b9bff}}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+header h1{font-size:24px;margin:0 0 4px;display:flex;gap:10px;align-items:center}
+.shield{background:var(--nh);color:#fff;font-weight:700;border-radius:6px;padding:2px 8px;font-size:14px}
+header p{margin:0;color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:16px}
+form{display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:end}
+label{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
+button,.btn{cursor:pointer;border:0;border-radius:10px;padding:11px 16px;font:600 15px Inter,sans-serif;background:var(--nh);color:#fff;text-decoration:none;display:inline-flex;gap:6px;align-items:center;justify-content:center}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.g{background:var(--acc)}
+button:disabled{opacity:.5;cursor:wait}
+.feat{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.feat b{font-size:16px}
+#status{margin-top:12px;color:var(--mut);min-height:1.5em}
+.grid{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
+#map{height:460px;border-radius:14px;border:1px solid var(--line)}
+.stats{display:flex;gap:18px;flex-wrap:wrap;margin:4px 0 12px}
+.stat b{display:block;font-size:22px}.stat span{color:var(--mut);font-size:12px}
+.verdict{padding:10px 12px;border-radius:10px;font-weight:600;margin-bottom:12px}
+.ok{background:var(--nhbg);color:var(--nh)}.wa{background:var(--warnbg);color:var(--warn)}.ba{background:var(--badbg);color:var(--bad)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.url{width:100%;font:12px ui-monospace,monospace;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);word-break:break-all}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase}
+.tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:12px;font-weight:600}
+ol.stops{padding-left:20px;margin:6px 0}ol.stops li{margin:3px 0}
+.muted{color:var(--mut);font-size:13px}
+h3{margin:18px 0 6px;font-size:15px}
+#out{display:none}
+@media (max-width:820px){form{grid-template-columns:1fr}.grid{grid-template-columns:1fr}#map{height:340px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1><span class="shield">NH</span> National Highway Route Planner</h1>
+  <p>For FASTag <b>Annual Pass</b> holders. Picks a route on National Highways, checks the toll plazas on the way, and builds a Google Maps link pinned with stops on the highway, away from city centres.</p>
+</header>
+
+<div class="card feat">
+  <div><b>Saved route: Raj Chandra Hospital, Lucknow → Clock Tower, Dehradun</b><br>
+  <span class="muted">NH-731 → NH-30 → NH-530 → NH-9 → NH-734 (Thakurdwara, Kashipur, Nagina) → NH-34 → NH-7 · about 590 km · avoids the Agra–Lucknow and Ganga expressways (state-run UPEIDA roads, where the pass is not valid)<br>
+  NHAI plazas on the way: Thiriya Khetal, Niyamatpur Ekrotiya, the NH-734 plazas near Nagina, and Lachhiwala. The amber stretches on the map are NH-734 and bypass sections that are not tagged in OpenStreetMap yet; none of them has a toll.</span></div>
+  <div class="actions" style="margin:0">
+    <a class="btn g" id="featGo" target="_blank" rel="noopener" href="#">Open in Google Maps</a>
+    <button class="btn alt" id="featLoad" type="button">Show details</button>
+  </div>
+</div>
+
+<div class="card">
+  <form id="f">
+    <div><label for="src">Source</label><input id="src" required placeholder="e.g. Raj Chandra Hospital, Lucknow"></div>
+    <div><label for="dst">Destination</label><input id="dst" required placeholder="e.g. Clock Tower, Dehradun"></div>
+    <div><label for="n">Stops</label><select id="n"><option>5</option><option>6</option><option selected>7</option><option>8</option><option>9</option></select></div>
+    <button id="go">Find NH route</button>
+  </form>
+  <div id="status"></div>
+</div>
+
+<div id="out">
+  <div class="grid">
+    <div class="card" style="padding:8px"><div id="map"></div></div>
+    <div class="card">
+      <div id="verdict" class="verdict"></div>
+      <div class="stats" id="stats"></div>
+      <div class="actions">
+        <a class="btn g" id="gmaps" target="_blank" rel="noopener">Navigate in Google Maps</a>
+        <button class="btn alt" id="copyG" type="button">Copy Maps link</button>
+        <button class="btn alt" id="share" type="button">Share</button>
+      </div>
+      <input class="url" id="gurl" readonly>
+      <h3>Highway stops (on the NH, outside towns)</h3>
+      <ol class="stops" id="stops"></ol>
+      <h3>Toll plazas on this route <span class="muted" id="tollnote"></span></h3>
+      <div id="tolls" class="muted">Checking…</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Road by road</h3>
+    <table><thead><tr><th>Road</th><th>km</th><th>Status</th></tr></thead><tbody id="segs"></tbody></table>
+    <p class="muted">Green = National Highway or NHAI expressway. Amber = local or state road with no toll plaza found; these are usually city access roads at each end, and use no FASTag balance. Red = state toll road (UPEIDA/state expressway), which is charged to your FASTag wallet.<br>
+    Route data: OpenStreetMap / OSRM. Toll plazas come from OpenStreetMap and may be incomplete. Before a long trip, check the plaza list in NHAI's Rajmargyatra app. Google Maps can still re-route if you leave the route, so follow the stops in order.</p>
+  </div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const OSRM = 'https://router.project-osrm.org/route/v1/driving/';
+// State-run / non-NHAI tolled expressways where the Annual Pass does NOT work
+const STATE_TOLL = /agra.?lucknow|ganga exp|purvanchal|bundelkhand|gorakhpur link|yamuna exp|taj exp|noida.?greater noida|mumbai.?pune|yashwantrao|samruddhi|hindu hrudaysamrat|atal progress|kmp|kundli.?manesar|western peripheral|eastern peripheral.*haryana|ahmedabad.?vadodara|hyderabad outer ring|nehru outer ring|bengaluru.?mysuru infra|nice road|rajiv gandhi salai|east coast road|it expressway|chennai.?ennore|jaipur ring|indore.?dewas|delhi.?gurgaon toll/i;
+const isNH = s => /\b(NH|NE)\s?-?\d/i.test(s.ref||'') || /national highway|\bNH\s?-?\d/i.test(s.name||'');
+const isState = s => STATE_TOLL.test((s.name||'')+' '+(s.ref||''));
+const hasToll = s => (s.intersections||[]).some(i => (i.classes||[]).includes('toll'));
+
+// Saved route: forced via-points sit on NH-734 so routing stays on National Highways
+const FEATURED = {src:'Raj Chandra Hospital, Lucknow', dst:'Clock Tower, Dehradun',
+  a:[26.799298,80.9056827], b:[30.3243249,78.0418653],
+  via:[[28.8409,78.8243],[29.2140,78.9280],[29.3006,78.7957]],
+  // stops that lock Google onto NH-734 (Moradabad–Thakurdwara–Kashipur–Jaspur), not the Kanth–Seohara state road
+  anchors:[[29.06,78.91],[29.31,78.70]]};
+function snapAnchors(A,anchors){
+  const out=[];
+  for(const an of anchors){let bd=1e9,best=null;
+    for(const s of A.steps){const c=s.geometry.coordinates;let d=0;
+      for(let i=0;i<c.length;i++){if(i)d+=hav([c[i-1][1],c[i-1][0]],[c[i][1],c[i][0]]);const h=hav(an,[c[i][1],c[i][0]]);if(h<bd){bd=h;best={p:[c[i][1],c[i][0]],at:s.start+d,ref:s.cls==='nh'?(s.ref||'NH'):'NH734'}}}}
+    if(best&&bd<5000) out.push(best);}
+  return out;
+}
+
+let map, layer;
+function km(m){return (m/1000).toFixed(m<10000?1:0)}
+function hav(a,b){const R=6371e3,t=Math.PI/180,dl=(b[0]-a[0])*t,dn=(b[1]-a[1])*t;const x=Math.sin(dl/2)**2+Math.cos(a[0]*t)*Math.cos(b[0]*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+function status(t){$('status').textContent=t}
+
+async function geocode(q){
+  const m=q.trim().match(/^(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)$/);
+  if(m) return {lat:+m[1],lon:+m[3],name:q};
+  const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=in&q='+encodeURIComponent(q));
+  const j=await r.json(); if(!j.length) throw new Error('Could not find "'+q+'". Try adding the city name.');
+  return {lat:+j[0].lat,lon:+j[0].lon,name:j[0].display_name};
+}
+async function osrm(pts,extra=''){
+  const u=OSRM+pts.map(p=>p[1]+','+p[0]).join(';')+'?steps=true&overview=full&geometries=geojson'+extra;
+  const r=await fetch(u); const j=await r.json(); if(j.code!=='Ok') return []; return j.routes;
+}
+function analyse(r){
+  const steps=r.legs.flatMap(l=>l.steps).filter(s=>s.distance>0);
+  let nh=0,st=0,other=0,len=r.distance;
+  let acc=0;
+  for(const s of steps){
+    s.start=acc; acc+=s.distance;
+    s.cls=isState(s)?'state':isNH(s)?'nh':'other';
+    if(s.cls==='state') st+=s.distance; else if(s.cls==='nh') nh+=s.distance; else other+=s.distance;
+  }
+  // non-NH far from the ends matters more than city access roads
+  const mid=steps.filter(s=>s.cls==='other'&&s.start>15000&&s.start+s.distance<len-15000).reduce((a,s)=>a+s.distance,0);
+  const score=st*1000+mid*4+r.duration*12; // metres-equivalent
+  return {r,steps,nh,st,other,mid,score};
+}
+async function bestRoute(a,b,via){
+  const pts=[a,...(via||[]),b];
+  const sets=await Promise.all([osrm(pts,via?'':'&alternatives=3'),osrm(pts,(via?'':'&alternatives=3')+'&exclude=motorway')]);
+  const cands=sets.flat().map(analyse).sort((x,y)=>x.score-y.score);
+  if(!cands.length) throw new Error('No road route found between these places.');
+  return cands[0];
+}
+function pickStops(A,n){
+  // walk each NH step's geometry; candidate = point well inside a long NH stretch (away from junctions & towns)
+  const L=A.r.distance, out=[];
+  const cand=[];
+  for(const s of A.steps){
+    if(s.cls!=='nh'||s.distance<6000) continue;
+    const c=s.geometry.coordinates; let d=0;
+    for(let i=1;i<c.length;i++){
+      const seg=hav([c[i-1][1],c[i-1][0]],[c[i][1],c[i][0]]); d+=seg;
+      if(d>2500&&d<s.distance-2500) cand.push({p:[c[i][1],c[i][0]],at:s.start+d,ref:s.ref||s.name||'NH',inner:Math.min(d,s.distance-d)});
+    }
+  }
+  if(!cand.length) return out;
+  for(let k=1;k<=n;k++){
+    const t=L*k/(n+1);
+    let best=null,bs=1e18;
+    for(const c of cand){
+      if(c.at<12000||c.at>L-12000) continue;
+      const sc=Math.abs(c.at-t)-Math.min(c.inner,15000)*0.6; // prefer middle of long stretches
+      if(sc<bs&&!out.some(o=>Math.abs(o.at-c.at)<L/(n*2.5))){bs=sc;best=c}
+    }
+    if(best) out.push(best);
+  }
+  return out.sort((x,y)=>x.at-y.at);
+}
+function gmapsUrl(a,b,stops){
+  const f=p=>p[0].toFixed(6)+','+p[1].toFixed(6);
+  return 'https://www.google.com/maps/dir/?api=1&origin='+f(a)+'&destination='+f(b)+
+    (stops.length?'&waypoints='+encodeURIComponent(stops.map(s=>f(s.p)).join('|')):'')+'&travelmode=driving';
+}
+async function tollCheck(A){
+  const cs=A.r.geometry.coordinates; let s=90,w=180,n=-90,e=-180;
+  for(const [x,y] of cs){s=Math.min(s,y);n=Math.max(n,y);w=Math.min(w,x);e=Math.max(e,x)}
+  const q=`[out:json][timeout:60];nwr[barrier=toll_booth](${s},${w},${n},${e});out center tags;`;
+  const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+  const j=await r.json();
+  const pts=[]; for(const st of A.steps) for(const c of st.geometry.coordinates) pts.push([c[1],c[0],st]);
+  const found=[];
+  for(const el of j.elements){
+    const p=[el.lat??el.center.lat, el.lon??el.center.lon];
+    let bd=1e9,bs=null; for(const q of pts){const d=hav(p,q); if(d<bd){bd=d;bs=q[2]}}
+    if(bd>150) continue;
+    if(found.some(f=>hav(f.p,p)<800)) continue; // merge both carriageways
+    found.push({p,name:el.tags.name||el.tags['name:en']||'Toll plaza',step:bs,at:bs.start});
+  }
+  return found.sort((x,y)=>x.at-y.at);
+}
+function render(A,a,b,stops,label){
+  $('out').style.display='block';
+  if(!map){map=L.map('map');L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(map)}
+  if(layer) layer.remove(); layer=L.layerGroup().addTo(map);
+  const col={nh:'#0f9d58',other:'#e69500',state:'#d93025'};
+  for(const s of A.steps) L.polyline(s.geometry.coordinates.map(c=>[c[1],c[0]]),{color:col[s.cls],weight:5,opacity:.9}).addTo(layer);
+  L.circleMarker(a,{radius:8,color:'#fff',fillColor:'#0f5fd7',fillOpacity:1,weight:2}).bindTooltip('Start').addTo(layer);
+  L.circleMarker(b,{radius:8,color:'#fff',fillColor:'#d93025',fillOpacity:1,weight:2}).bindTooltip('Destination').addTo(layer);
+  stops.forEach((s,i)=>L.marker(s.p,{icon:L.divIcon({className:'',html:`<div style="background:#0f7b45;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;font:700 12px/18px Inter;text-align:center">${i+1}</div>`})}).bindTooltip(s.ref).addTo(layer));
+  map.fitBounds(L.geoJSON(A.r.geometry).getBounds(),{padding:[20,20]});
+
+  const pct=Math.round(A.nh/A.r.distance*100);
+  const v=$('verdict');
+  if(A.st>0){v.className='verdict ba';v.textContent='⚠ No all-NH route found: '+km(A.st)+' km is on a state toll road.'}
+  else if(A.mid>20000){v.className='verdict wa';v.textContent='Mostly NH. '+km(A.mid)+' km uses state or district roads (no toll plaza found).'}
+  else {v.className='verdict ok';v.textContent='✓ National Highway route. No state toll roads.'}
+  $('stats').innerHTML=`<div class="stat"><b>${km(A.r.distance)} km</b><span>distance</span></div><div class="stat"><b>${Math.floor(A.r.duration/3600)}h ${Math.round(A.r.duration%3600/60)}m</b><span>drive time (est.)</span></div><div class="stat"><b>${pct}%</b><span>on NH</span></div>`;
+  const url=gmapsUrl(a,b,stops); $('gmaps').href=url; $('gurl').value=url;
+  $('stops').innerHTML=stops.map(s=>`<li><b>${(s.ref||'NH').replace(/;.*/,'')}</b> · km ${Math.round(s.at/1000)} · <a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${s.p[0].toFixed(5)},${s.p[1].toFixed(5)}">${s.p[0].toFixed(4)}, ${s.p[1].toFixed(4)}</a></li>`).join('')||'<li class="muted">Short trip, no stops needed</li>';
+  // merged road table
+  const rows=[]; for(const s of A.steps){const key=(s.ref||s.name||'unnamed road').replace(/;.*/,''); const last=rows[rows.length-1]; if(last&&last.key===key&&last.cls===s.cls) last.d+=s.distance; else rows.push({key,cls:s.cls,d:s.distance})}
+  const lab={nh:['NH','ok','National Highway'],other:['','wa','Local / state road'],state:['','ba','State toll road (wallet charged)']};
+  $('segs').innerHTML=rows.filter(r=>r.d>1500).map(r=>`<tr><td>${r.key}</td><td>${km(r.d)}</td><td><span class="tag ${lab[r.cls][1]}">${lab[r.cls][2]}</span></td></tr>`).join('');
+  $('tolls').textContent='Checking OpenStreetMap…'; $('tollnote').textContent='';
+  tollCheck(A).then(t=>{
+    if(!t.length){$('tolls').textContent='No toll plazas found in OpenStreetMap on this route.';return}
+    const bad=t.filter(x=>x.step.cls!=='nh');
+    $('tollnote').textContent='('+t.length+' found'+(bad.length?', '+bad.length+' not on an NH':', all on NH')+')';
+    $('tolls').innerHTML='<table><tbody>'+t.map(x=>`<tr><td>${x.name}</td><td>${(x.step.ref||x.step.name||'').replace(/;.*/,'')}</td><td>${x.step.cls==='nh'?'<span class="tag ok">Annual pass</span>':'<span class="tag ba">Wallet may be charged</span>'}</td></tr>`).join('')+'</tbody></table>';
+  }).catch(()=>{$('tolls').textContent='Toll lookup is unavailable right now (Overpass server busy). The route itself is unaffected.'});
+  const share=location.origin+location.pathname+'?'+new URLSearchParams({from:label[0],to:label[1],n:stops.length}).toString();
+  $('share').onclick=async()=>{const text='NH route: '+label[0]+' → '+label[1];try{if(navigator.share){await navigator.share({title:text,text:text+'\nGoogle Maps: '+url,url:share});return}}catch(e){} copy(text+'\nGoogle Maps: '+url+'\nDetails: '+share,$('share'))};
+  $('copyG').onclick=()=>copy(url,$('copyG'));
+}
+function copy(t,btn){navigator.clipboard.writeText(t).then(()=>{const o=btn.textContent;btn.textContent='Copied ✓';setTimeout(()=>btn.textContent=o,1500)})}
+
+async function run(srcQ,dstQ,n,fixed){
+  $('go').disabled=true;
+  try{
+    let a,b,via;
+    if(fixed){a=fixed.a;b=fixed.b;via=fixed.via}
+    else{
+      status('Finding places…');
+      const A1=await geocode(srcQ); await new Promise(r=>setTimeout(r,1000)); const B1=await geocode(dstQ);
+      a=[A1.lat,A1.lon]; b=[B1.lat,B1.lon];
+      if(hav(a,FEATURED.a)<25000&&hav(b,FEATURED.b)<25000){via=FEATURED.via;fixed=FEATURED}
+    }
+    status('Comparing routes for National Highway coverage…');
+    const best=await bestRoute(a,b,via);
+    let stops;
+    if(fixed&&fixed.anchors){
+      const anc=snapAnchors(best,fixed.anchors);
+      stops=pickStops(best,n).filter(s=>!anc.some(x=>Math.abs(x.at-s.at)<40000));
+      stops=[...anc,...stops].sort((x,y)=>x.at-y.at).slice(0,9);
+    } else stops=pickStops(best,n);
+    render(best,a,b,stops,[srcQ,dstQ]);
+    status('');
+    history.replaceState(null,'','?'+new URLSearchParams({from:srcQ,to:dstQ,n}));
+    $('out').scrollIntoView({behavior:'smooth'});
+  }catch(e){status('Error: '+e.message)}
+  finally{$('go').disabled=false}
+}
+$('f').onsubmit=e=>{e.preventDefault();run($('src').value,$('dst').value,+$('n').value)};
+$('featLoad').onclick=()=>{$('src').value=FEATURED.src;$('dst').value=FEATURED.dst;$('n').value='7';run(FEATURED.src,FEATURED.dst,7,FEATURED)};
+$('featGo').href='https://www.google.com/maps/dir/?api=1&origin=26.799298,80.905683&destination=30.324325,78.041865&waypoints=27.140109%2C80.355202%7C27.653638%2C79.940026%7C28.168534%2C79.570648%7C28.612474%2C79.180942%7C29.065097%2C78.892520%7C29.323483%2C78.655239%7C29.780579%2C78.264961&travelmode=driving';
+const qp=new URLSearchParams(location.search);
+if(qp.get('from')&&qp.get('to')){$('src').value=qp.get('from');$('dst').value=qp.get('to');if(qp.get('n'))$('n').value=qp.get('n');run(qp.get('from'),qp.get('to'),+$('n').value)}
+</script>
+</body>
+</html>
